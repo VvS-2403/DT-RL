@@ -1,0 +1,10 @@
+{
+  "/regimes/page": "app/regimes/page.js",
+  "/page": "app/page.js",
+  "/predictions/page": "app/predictions/page.js",
+  "/data/page": "app/data/page.js",
+  "/models/page": "app/models/page.js",
+  "/train/page": "app/train/page.js",
+  "/backtest/page": "app/backtest/page.js",
+  "/dependencies/page": "app/dependencies/page.js"
+}

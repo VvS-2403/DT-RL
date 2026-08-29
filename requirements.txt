@@ -1,0 +1,50 @@
+# Core ML & Numerical
+torch>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+polars>=0.20.0
+scipy>=1.10.0
+
+# Data & IO
+pyarrow>=12.0.0
+
+# Configuration
+pyyaml>=6.0
+pydantic>=2.0.0
+
+# Backend
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+
+# Async/Jobs
+celery>=5.3.0
+redis>=5.0.0
+
+# Database/Storage
+sqlalchemy>=2.0.0
+
+# Frontend (installed separately in frontend/)
+# node, npm, typescript, react, next.js, tailwind, shadcn/ui, recharts
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-asyncio>=0.21.0
+
+# Type checking
+mypy>=1.5.0
+
+# Development
+black>=23.10.0
+isort>=5.12.0
+flake8>=6.1.0
+
+# Monitoring & Logging
+tensorboard>=2.14.0
+python-json-logger>=2.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+click>=8.1.0
