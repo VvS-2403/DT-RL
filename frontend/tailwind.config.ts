@@ -9,8 +9,8 @@ const config: Config = {
     extend: {
       colors: {
         'primary': '#1f2937',
-        'secondary': '#0b80f6',
-        'accent': '#06b6d4',
+        'secondary': '#001926',
+        'accent': '#fe03e1',
         gray: {
           900: '#141414',
           800: '#181818',

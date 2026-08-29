@@ -23,8 +23,15 @@ export default function Dashboard() {
     try {
       // Fetch system health
       const healthRes = await fetch(`${API_URL}/health`)
-      const health = await healthRes.json()
-      setSystemHealth(health)
+      if (healthRes.ok) {
+        const health = await healthRes.json()
+        setSystemHealth(health)
+      } else {
+        setSystemHealth({
+          status: 'error',
+          error_message: `HTTP ${healthRes.status}: ${healthRes.statusText}`
+        })
+      }
 
       // Mock equity curve data
       const equityData = Array.from({ length: 30 }, (_, i) => ({
@@ -60,8 +67,12 @@ export default function Dashboard() {
         regime: `R${Math.floor(Math.random() * 4) + 1}`,
       }))
       setPredictions(mockPredictions)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to fetch dashboard data:', err)
+      setSystemHealth({
+        status: 'error',
+        error_message: 'Failed to connect to backend server. Make sure the FastAPI server is running.'
+      })
     }
   }
 
@@ -72,12 +83,23 @@ export default function Dashboard() {
         <p className="text-slate-400">Real-time system overview and key metrics</p>
       </div>
 
+      {/* Connection Error Banner */}
+      {systemHealth && systemHealth.status === 'error' && (
+        <div className="mb-6 p-4 bg-red-900/30 border border-red-500 rounded-lg text-red-200 text-sm">
+          <span className="font-bold">⚠ Backend Connection Error:</span> {systemHealth.error_message}
+          <div className="mt-2 text-xs text-slate-400">
+            Current Endpoint Configured: <code className="bg-slate-900 px-1 py-0.5 rounded">{API_URL}</code>. 
+            Make sure your FastAPI server is running on this address.
+          </div>
+        </div>
+      )}
+
       {/* System Status */}
-      {systemHealth && (
+      {systemHealth && systemHealth.status === 'healthy' && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="metric-card">
             <div className="text-xs text-slate-500 uppercase tracking-wide">System Status</div>
-            <div className="metric-value">{systemHealth.status === 'healthy' ? 'Healthy' : 'Error'}</div>
+            <div className="metric-value">{systemHealth.status === 'healthy' ? '✓ Healthy' : '✗ Error'}</div>
           </div>
           <div className="metric-card">
             <div className="text-xs text-slate-500 uppercase tracking-wide">GPU Available</div>
