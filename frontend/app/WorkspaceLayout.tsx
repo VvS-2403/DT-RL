@@ -27,8 +27,8 @@ export default function WorkspaceLayout({
       {/* Sidebar (Explorer / AI Chat style sidebar) */}
       <nav className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
         <div className="p-6 border-b border-gray-700">
-          <h1 className="text-xl font-bold text-blue-400">DependencyAI</h1>
-          <p className="text-xs text-slate-400 mt-2">Trading System v0.1</p>
+          <h1 className="text-xl font-bold text-blue-400">Fysics Engine</h1>
+          <p className="text-xs text-slate-400 mt-2">A really good Sequence modeller-v0.1</p>
         </div>
         
         <div className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
