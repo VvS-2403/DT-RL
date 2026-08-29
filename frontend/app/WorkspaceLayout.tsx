@@ -27,8 +27,8 @@ export default function WorkspaceLayout({
       {/* Sidebar (Explorer / AI Chat style sidebar) */}
       <nav className="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
         <div className="p-6 border-b border-gray-700">
-          <h1 className="text-xl font-bold text-blue-400">Fysics Engine</h1>
-          <p className="text-xs text-slate-400 mt-2">A really good Sequence modeller-v0.1</p>
+          <h1 className="text-xl font-bold text-blue-400">DependencyAI</h1>
+          <p className="text-xs text-slate-400 mt-2">Trading System v0.1</p>
         </div>
         
         <div className="p-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -43,8 +43,8 @@ export default function WorkspaceLayout({
                   href={tab.path}
                   className={`block px-4 py-2 rounded text-sm transition ${
                     isActive
-                      ? 'bg-gray-900 text-white font-medium border-l-2 border-blue-500'
-                      : 'text-slate-400 hover:bg-gray-700 hover:text-slate-200'
+                      ? 'bg-gray-900 text-blue-400 font-semibold border-l-2 border-blue-500'
+                      : 'text-slate-300 hover:bg-gray-700/60 hover:text-white'
                   }`}
                 >
                   {tab.name}
@@ -65,10 +65,10 @@ export default function WorkspaceLayout({
               <a
                 key={tab.path}
                 href={tab.path}
-                className={`h-full flex items-center px-4 text-xs border-r border-gray-700 transition-all ${
+                className={`h-full flex items-center px-4 text-xs font-semibold rounded-t-md transition-all mx-0.5 ${
                   isActive
-                    ? 'bg-gray-900 text-white font-medium border-t-2 border-t-blue-500'
-                    : 'bg-gray-800 text-slate-400 hover:bg-gray-700 hover:text-slate-200'
+                    ? 'bg-gray-900 text-blue-400 border-t-2 border-t-blue-500'
+                    : 'bg-gray-800/80 text-slate-350 hover:bg-gray-700/60 hover:text-slate-100'
                 }`}
               >
                 <span>{tab.name}</span>

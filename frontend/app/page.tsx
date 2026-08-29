@@ -77,7 +77,7 @@ export default function Dashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="metric-card">
             <div className="text-xs text-slate-500 uppercase tracking-wide">System Status</div>
-            <div className="metric-value">{systemHealth.status === 'healthy' ? '✓ Healthy' : '✗ Error'}</div>
+            <div className="metric-value">{systemHealth.status === 'healthy' ? 'Healthy' : 'Error'}</div>
           </div>
           <div className="metric-card">
             <div className="text-xs text-slate-500 uppercase tracking-wide">GPU Available</div>
