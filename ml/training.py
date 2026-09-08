@@ -71,7 +71,6 @@ class SequenceTrainer:
             mode="min",
             factor=0.5,
             patience=3,
-            verbose=True,
         )
         
         # Mixed precision
