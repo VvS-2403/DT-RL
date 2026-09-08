@@ -1,0 +1,228 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{tocloft}
+\usepackage{setspace}
+
+\geometry{
+    left=2.5cm,
+    right=2.5cm,
+    top=3cm,
+    bottom=3cm,
+}
+
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{ML Architecture Documentation}
+\lhead{DT-RL Pipeline}
+\cfoot{\thepage}
+
+\title{
+    \Huge \textbf{Dependency-Aware Trading Pipeline}\\
+    \vspace{1cm}
+    \LARGE \textbf{Complete ML Architecture Documentation}\\
+    \vspace{0.5cm}
+    \large \textit{A Comprehensive Guide to the \texttt{ml/} Directory}
+}
+\author{Antigravity AI}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+\chapter{Introduction}
+\onehalfspacing
+
+The \texttt{ml} directory contains the core implementation of the Dependency-Aware Reinforcement Learning for Trading (DT-RL) pipeline. This system is designed to handle multi-asset financial time series, extract cross-asset dependencies, identify macroeconomic regimes, and execute sequential decision-making using a Transformer-based architecture.
+
+Unlike traditional quantitative models that treat assets independently, this architecture uses a hypergraph encoder to model systemic market behavior. The final execution is framed as an offline Reinforcement Learning problem (via a Decision Transformer), allowing the model to optimize for long-term portfolio goals (e.g., Sharpe Ratio) rather than just immediate next-step price prediction.
+
+This document provides a comprehensive theoretical and architectural breakdown of every module, class, and critical function in the \texttt{ml} folder, focusing on the conceptual design rather than implementation code.
+
+\chapter{The Core Pipeline}
+
+\section{\texttt{ml/pipeline.py}}
+This file serves as the central orchestrator that stitches together the five neural network modules into a cohesive end-to-end system.
+
+\subsection{\texttt{PipelineConfig}}
+A configuration class that acts as the single source of truth for the model's hyperparameters. It defines the lookback window, dimensions for the encoder and transformer, number of attention heads, training hyperparameters (like learning rate, batch size, and weight decay), and financial constraints (like maximum weight per asset, leverage limits, and transaction costs).
+
+\subsection{\texttt{DependencyAwareTradingPipeline}}
+The primary \texttt{nn.Module} representing the entire neural network. It follows a specific data flow:
+\begin{enumerate}
+    \item \textbf{Initialization}: Uses lazy initialization via \texttt{initialize\_modules}. Because the dimensions of the network depend on the number of assets and features in the input data, the sub-modules are only instantiated after a "dummy" \texttt{MarketTensor} is passed through.
+    \item \textbf{Forward Pass}: The \texttt{forward} method outlines the sequence of operations:
+    \begin{itemize}
+        \item Passes input features and masks through the Hypergraph Encoder (Module 2) to get cross-asset embeddings.
+        \item Passes these embeddings to the Regime Classifier (Module 3) to extract regime probabilities and continuous regime embeddings.
+        \item Enriches the state embeddings with the regime embeddings and feeds them into the Decision Transformer (Module 4) alongside "Return-to-Go" (RTG) targets.
+        \item Passes the resulting latent decisions to the Output Module (Module 5) to yield either portfolio weights or future price forecasts.
+    \end{itemize}
+    \item \textbf{Training and Inference Interfaces}: Provides high-level methods like \texttt{fit}, \texttt{predict}, and \texttt{evaluate} to abstract away raw PyTorch tensor manipulation for the end-user.
+\end{enumerate}
+
+\chapter{The Neural Modules}
+
+The architecture is divided into five distinct modules, each handling a specific phase of the quantitative trading pipeline.
+
+\section{Module 1: Input and Preprocessing (\texttt{ml/modules/module1\_input.py})}
+This module handles the ingestion and alignment of raw financial data into structured tensors suitable for deep learning. Financial data is notoriously messy, featuring missing values, differing asset lifespans (IPOs and delistings), and varying scales.
+
+\subsection{\texttt{MarketTensor}}
+A data structure that holds the multi-asset features. It maintains a 3D tensor of shape (Number of Assets $\times$ Timesteps $\times$ Features), alongside a binary \texttt{validity\_mask} of shape (Number of Assets $\times$ Timesteps). The validity mask is critical: it tells downstream modules to ignore assets on days they were not tradable, preventing the model from allocating capital to delisted or non-existent stocks.
+
+\subsection{\texttt{StockDataProcessor}}
+Responsible for converting a raw Pandas DataFrame into a \texttt{MarketTensor}. It performs chronological alignment, forward-filling of missing data, and normalization (e.g., Z-score scaling). It computes means and standard deviations only over valid data points to prevent missing data artifacts from skewing the normalization.
+
+\subsection{\texttt{DataValidator}}
+A diagnostic utility that analyzes a \texttt{MarketTensor} for anomalies such as excessive NaN values, severe temporal gaps, or constant features (features with zero variance), ensuring data quality before training begins.
+
+\section{Module 2: Hypergraph Encoder (\texttt{ml/modules/module2\_encoder.py})}
+Traditional financial models often struggle to capture how shocks to one asset (e.g., Apple) propagate to others (e.g., Microsoft or supply chain partners). This module uses hypergraph neural networks to model these complex, non-pairwise relationships.
+
+\subsection{\texttt{HypergraphEncoder}}
+Learns to map individual stock features into "sector" representations, and then broadcasts those sector representations back to the individual stocks.
+\begin{itemize}
+    \item \textbf{Incidence Matrix (H)}: Defines the mapping between stocks and latent sectors.
+    \item \textbf{Two-Step Exchange}: First, stock features are projected into sectors. The sector embeddings are normalized by the "degree" (size) of the sector to prevent massive sectors from drowning out signals. Second, the aggregated sector information is decoded back into the stock embeddings, enriching the individual asset's state with systemic context.
+\end{itemize}
+
+\subsection{\texttt{SectorAssignmentLearner}}
+While the incidence matrix can be fixed, this class allows the network to learn "soft" sector assignments via a softmax projection, enabling the model to dynamically discover hidden sector relationships that may not align with standard classifications like GICS.
+
+\section{Module 3: Regime Classifier (\texttt{ml/modules/module3\_regime.py})}
+Financial markets frequently shift between distinct macroeconomic environments (regimes). A strategy that works during a low-volatility bull market may fail catastrophically during a high-volatility crash.
+
+\subsection{\texttt{RegimeClassifier}}
+Takes the context-enriched embeddings from Module 2 and classifies the current market state into one of four regimes. The regimes are defined across two axes: Memory (trending vs. mean-reverting) and Credit/Information Delay (slow macro absorption vs. instant reaction). 
+
+Critically, the classifier outputs \textbf{continuous regime embeddings} rather than hard discrete routing. It multiplies the softmax probabilities of each regime by learnable regime embeddings. This prevents unstable, discontinuous portfolio shifting when the market is on the boundary between two regimes.
+
+\subsection{\texttt{RegimeMemoryAnalyzer} and \texttt{CreditAxisAnalyzer}}
+Diagnostic classes used to interpret the regimes. The Memory Analyzer computes rolling lag-1 autocorrelations to identify trending behavior, while the Credit Axis Analyzer looks at the ratio of short-term to long-term volatility to gauge how rapidly the market is pricing in new information.
+
+\section{Module 4: Decision Transformer (\texttt{ml/modules/module4\_transformer.py})}
+
+This module frames the trading problem as sequence modeling via Offline Reinforcement Learning. Instead of predicting the next price step-by-step, it asks the model: "Given the current state and a desired future return (Return-to-Go), what action should be taken?" 
+The docstring notes: \texttt{Input: Enriched sequences $\tau$ = (R\^{}t, Z\~{}t, at) where Z\~{} = Z + E\_regime}. This indicates the Decision Transformer processes a trajectory $\tau$ composed of Returns, States, and Actions.
+The design choice mentioned in the comments, \textit{"Shared Decision Transformer with continuous regime conditioning (Avoids parameter explosion and data starvation of 4 separate transformers)"}, is critical. Instead of training four different models for four different market regimes, a single model is used, and the regime is passed as a continuous conditional variable.
+
+\subsection{\texttt{PositionalEncoding}}
+Transformers process all tokens in parallel and lack an inherent sense of sequence order. This class injects time awareness.
+\begin{itemize}
+    \item \textbf{\texttt{\_\_init\_\_}}: Initializes a matrix \texttt{pe} of shape \texttt{(max\_len, d\_model)}. It computes a \texttt{div\_term} (frequencies based on $10000^{-2i/d\_model}$) and applies \texttt{torch.sin} to even indices and \texttt{torch.cos} to odd indices. This is the exact sinusoidal formulation from "Attention Is All You Need". The \texttt{register\_buffer} ensures the \texttt{pe} tensor is saved with the model state but not updated by backpropagation.
+    \item \textbf{\texttt{forward}}: Takes an input tensor \texttt{x} and adds the pre-calculated positional encoding slice corresponding to the sequence length of \texttt{x}.
+\end{itemize}
+
+\subsection{\texttt{DecisionTransformer}}
+The core causal transformer adapted for Reinforcement Learning.
+\begin{itemize}
+    \item \textbf{\texttt{\_\_init\_\_}}: 
+    \begin{itemize}
+        \item Initializes three independent linear projections: \texttt{return\_to\_go\_projection} (maps 1D return to \texttt{embedding\_dim}), \texttt{state\_projection} (maps state dimension $D$ to \texttt{embedding\_dim}), and \texttt{action\_projection} (maps action dimension to \texttt{embedding\_dim}).
+        \item Initializes the \texttt{PositionalEncoding}.
+        \item Initializes \texttt{nn.TransformerEncoderLayer} and \texttt{nn.TransformerEncoder}. 
+        \item Initializes an \texttt{output\_projection} to map the transformer output back to the desired latent dimension.
+    \end{itemize}
+    \item \textbf{\texttt{forward}}:
+    \begin{itemize}
+        \item Projects the RTG, State, and Action inputs into the common embedding space.
+        \item If \texttt{actions} are not provided (e.g., at the very start of generation), it defaults to a zero tensor (\texttt{torch.zeros\_like(state\_embed)}).
+        \item \textbf{Token Interleaving}: Uses \texttt{torch.stack([rtg\_embed, state\_embed, action\_embed], dim=2)} and then \texttt{view} to interleave the sequence. The resulting sequence looks like: $R_1, s_1, a_1, R_2, s_2, a_2, \dots$. This is the defining characteristic of the Decision Transformer architecture.
+        \item Applies positional encoding and passes the tokens through the transformer.
+        \item \textbf{Extraction}: \texttt{transformer\_output[:, 1::3, :]} extracts the transformer's output specifically at the "State" tokens (which occur every 3rd token, starting at index 1). We extract at the State token because we want to predict the \textit{next} Action given the Return and State.
+        \item Projects the extracted tokens using \texttt{output\_projection} to yield the \texttt{latent\_decision}.
+    \end{itemize}
+\end{itemize}
+
+\subsection{\texttt{RegimeConditionedTransformer}}
+A wrapper that enriches the state embeddings with regime information before feeding them to the Decision Transformer.
+\begin{itemize}
+    \item \textbf{\texttt{\_\_init\_\_}}: Initializes a \texttt{state\_regime\_combiner} (an MLP with Linear $\rightarrow$ LayerNorm $\rightarrow$ ReLU $\rightarrow$ Dropout) and the underlying \texttt{DecisionTransformer}.
+    \item \textbf{\texttt{forward}}: Concatenates the raw states ($Z$) and regime embeddings ($E_{regime}$) along the last dimension. It passes this combined vector through the \texttt{state\_regime\_combiner} to produce \texttt{enriched\_states}, which are then passed to the Decision Transformer.
+\end{itemize}
+
+\subsection{\texttt{TrajectoryEncoder}}
+A high-level class that encodes full trajectories and handles the mathematical construction of Return-to-Go.
+\begin{itemize}
+    \item \textbf{\texttt{\_\_init\_\_} and \texttt{encode\_trajectory}}: Standard wrapper functions that initialize and call the \texttt{RegimeConditionedTransformer}.
+    \item \textbf{\texttt{construct\_return\_to\_go} (Static Method)}: This function computes the cumulative discounted future returns.
+    \begin{itemize}
+        \item It loops backward through the sequence (\texttt{for t in range(seq\_len - 1, -1, -1)}).
+        \item For the last timestep, RTG is just the return at that timestep (\texttt{return\_to\_go[:, t, 0] = future\_returns[:, t]}).
+        \item For prior timesteps, RTG is the current return plus the discounted RTG of the next timestep: $R_t + \gamma \cdot RTG_{t+1}$ (where $\gamma = 0.99$).
+        \item This logic is critical: during training, it allows the model to map specific state-action pairs to the actual long-term returns they achieved.
+    \end{itemize}
+\end{itemize}
+
+\subsection{\texttt{ActionPolicyHead}}
+The final policy network that maps abstract latent decisions to concrete actions.
+\begin{itemize}
+    \item \textbf{\texttt{\_\_init\_\_}}: Creates an MLP (\texttt{nn.Sequential}) consisting of Linear $\rightarrow$ LayerNorm $\rightarrow$ ReLU $\rightarrow$ Dropout $\rightarrow$ Linear. It maps the \texttt{latent\_dim} to the \texttt{action\_dim}.
+    \item \textbf{\texttt{forward}}: Passes the \texttt{latent\_decision} through the MLP to output the final \texttt{actions}.
+    \item Note: While defined here for completeness of a standard RL pipeline, the actual DT-RL architecture bypasses this simple head in favor of the specialized \texttt{OutputModule} in Module 5, which handles portfolio constraints and forecasting logic.
+\end{itemize}
+
+\section{Module 5: Output Heads (\texttt{ml/modules/module5\_output.py})}
+Translates the abstract latent decision vectors from the Transformer into actionable financial outputs. It supports two modes of execution.
+
+\subsection{\texttt{PortfolioWeightsHead} (Direct Execution)}
+Used for end-to-end reinforcement learning. It directly outputs the percentage of capital to allocate to each asset.
+\begin{itemize}
+    \item It uses a masked softmax to ensure that weights sum to 1.0 across \textit{valid} assets only, naturally handling IPOs and delistings.
+    \item It applies post-processing constraints to enforce rules like long-only limits, maximum weight caps, and leverage constraints.
+\end{itemize}
+
+\subsection{\texttt{ForecastingHead} (Separated Execution)}
+Instead of directly outputting trades, it predicts the expected returns of each asset over a specified future horizon, as well as an uncertainty score (confidence). A downstream algorithm (or a separate standard RL agent) is then required to convert these forecasts into a portfolio.
+
+\chapter{Training, Inference, and Evaluation}
+
+\section{\texttt{ml/training.py}}
+Manages the complex lifecycle of training the deep neural network.
+
+\subsection{\texttt{SequenceTrainer}}
+The core training engine. 
+\begin{itemize}
+    \item \textbf{Chronological Splitting}: Enforces strict chronological data splitting to prevent future leakage (look-ahead bias).
+    \item \textbf{Dual Loss Regimes}: If in portfolio weights mode, the loss function is the negative of the expected portfolio return (thus maximizing returns via gradient descent). If in forecasting mode, the loss is the Mean Squared Error (MSE) of the predictions.
+    \item \textbf{Optimization}: Utilizes the Adam optimizer, Gradient Clipping (to prevent exploding gradients common in sequential models), and a ReduceLROnPlateau scheduler.
+    \item \textbf{Mixed Precision}: Employs PyTorch AMP (Automatic Mixed Precision) to reduce VRAM consumption and accelerate training on modern GPUs.
+\end{itemize}
+
+\section{\texttt{ml/inference.py}}
+Provides lightweight utilities for deploying the trained model.
+
+\subsection{\texttt{run\_inference}}
+Takes a loaded model and a fresh \texttt{MarketTensor}. It constructs the required Return-to-Go target (the desired performance benchmark), runs the forward pass under \texttt{torch.no\_grad()}, and packages the resulting regime probabilities, confidences, and portfolio weights into a cleanly structured dictionary for the execution system.
+
+\section{\texttt{ml/evaluation.py}}
+Calculates rigorous financial and statistical metrics on the out-of-sample data.
+
+\subsection{\texttt{compute\_financial\_metrics}}
+A crucial function that evaluates the model not as a statistical predictor, but as a trading system. It takes the sequence of portfolio returns and weight changes to compute:
+\begin{itemize}
+    \item \textbf{Sharpe and Sortino Ratios}: Measures of risk-adjusted return.
+    \item \textbf{Maximum Drawdown}: The largest peak-to-trough drop in equity, measuring worst-case risk.
+    \item \textbf{Turnover and Transaction Costs}: Approximates the frictional cost of trading. A model with high theoretical returns but massive turnover will be severely penalized here.
+\end{itemize}
+
+\chapter{Data Simulation}
+
+\section{\texttt{ml/data/synthetic\_data.py}}
+To test the pipeline without requiring live financial data APIs, this module generates highly realistic, synthetic OHLCV data.
+
+\subsection{\texttt{SyntheticMarketDataGenerator}}
+Generates artificial price paths for multiple assets using random walks with injected sector-level shocks, creating realistic cross-asset correlations. It also calculates standard technical indicators (RSI, MACD, Bollinger Bands) and artificially simulates IPOs and delistings by selectively dropping data chunks. This is vital for verifying that the pipeline's validity masks function correctly under edge cases.
+
+\end{document}
