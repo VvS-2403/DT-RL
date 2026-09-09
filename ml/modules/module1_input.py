@@ -294,11 +294,11 @@ class DataValidator:
         
         # Check coverage per asset
         coverage_per_asset = M.sum(axis=1) / T
-        if (coverage_per_asset < 0.5).any():
+        if (coverage_per_asset < 0.1).any():
             sparse_assets = [
-                mt.asset_ids[i] for i in range(N) if coverage_per_asset[i] < 0.5
+                mt.asset_ids[i] for i in range(N) if coverage_per_asset[i] < 0.1
             ]
-            issues.append(f"Low coverage (<50%): {sparse_assets}")
+            issues.append(f"Low coverage (<10%): {sparse_assets}")
         
         # Check temporal continuity
         dates_diff = np.diff(mt.timestamps.astype('datetime64[D]'))

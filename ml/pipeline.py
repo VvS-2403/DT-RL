@@ -221,9 +221,15 @@ class DependencyAwareTradingPipeline(nn.Module):
             "transaction_cost_bps": self.config.transaction_cost_bps,
         }
         
+        # M is (batch, N, T). We need a mask of shape (batch*N, T, N) where
+        # mask[b*N + i, t, j] = M[b, j, t] (is asset j valid at time t?)
+        M_transposed = M.transpose(1, 2)  # (batch, T, N)
+        # Expand so every predicting asset i sees the same portfolio validity mask
+        M_for_weights = M_transposed.unsqueeze(1).expand(batch_size, N, T, N).reshape(batch_size * N, T, N)
+        
         output = self.module5(
             latent_decision=H_flat,
-            validity_mask=M_flat,
+            validity_mask=M_for_weights,
             constraints=constraints,
         )
         
